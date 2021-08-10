@@ -1,0 +1,55 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run clippy",
+            "group": "build",
+            "command": "cargo",
+            "args": [
+                "+nightly",
+                "clippy",
+            ],
+            "options": {},
+            "problemMatcher": [
+                "$rustc"
+            ]
+        },
+        {
+            "label": "Build release",
+            "group": "build",
+            "command": "cargo",
+            "args": [
+                "+nightly",
+                "build",
+                "--release",
+            ],
+            "options": {
+                "env": {
+                    "RUSTFLAGS": "-g"
+                }
+            },
+            "problemMatcher": [
+                "$rustc"
+            ]
+        },
+        {
+            "label": "Build debug",
+            "group": "build",
+            "command": "cargo",
+            "args": [
+                "+nightly",
+                "build",
+            ],
+            "options": {
+                "env": {
+                    "RUSTFLAGS": "-g"
+                }
+            },
+            "problemMatcher": [
+                "$rustc"
+            ]
+        }
+    ]
+}
