@@ -78,18 +78,6 @@ impl<'a> ScopeScratch<'a> {
         &self,
         pod: T,
     ) -> Result<&mut T, AllocationError> {
-        let data = self.allocator.alloc_internal(ScopeData {
-            mem: std::ptr::null_mut::<u8>(),
-            dtor: None,
-            previous: self.data_chain.get(),
-        })?;
-
-        match self.allocator.alloc_internal(pod) {
-            Ok(ret) => {
-                self.data_chain.replace(Some(data));
-                Ok(ret)
-            }
-            Err(why) => Err(why), // This leaves the memory allocated for dtor hanging around
-        }
+        self.allocator.alloc_internal(pod)
     }
 }
