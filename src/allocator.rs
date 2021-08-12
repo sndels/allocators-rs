@@ -12,7 +12,7 @@ const L1_CACHE_LINE_SIZE: usize = 64;
 
 impl LinearAllocator {
     pub fn new(size_bytes: usize) -> Result<Self, CreateError> {
-        println!("LinearAllocator::new({})", size_bytes);
+        // println!("LinearAllocator::new({})", size_bytes);
         if size_bytes == 0 {
             return Err(CreateError::ZeroBytes(
                 "Cannot create allocator with size 0".into(),
@@ -43,7 +43,7 @@ impl LinearAllocator {
 
 impl Drop for LinearAllocator {
     fn drop(&mut self) {
-        println!("LinearAllocator::drop()");
+        // println!("LinearAllocator::drop()");
         unsafe {
             std::alloc::dealloc(self.block_start, self.layout);
         }
@@ -60,7 +60,7 @@ impl AllocatorInternal for LinearAllocator {
     fn alloc_internal<T>(&self, obj: T) -> Result<&mut T, AllocationError> {
         let size_bytes = std::mem::size_of::<T>();
         let alignment = std::mem::align_of::<T>();
-        println!("size {}", size_bytes);
+        // println!("size {}", size_bytes);
 
         let next_alloc = self.next_alloc.get();
         let align_offset = next_alloc.align_offset(alignment);
