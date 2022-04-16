@@ -89,7 +89,10 @@ impl AllocatorInternal for LinearAllocator {
 
     /// Rewinds the allocator back to `alloc`.
     /// # Safety
-    ///  - `alloc` has to be a pointer allocated by this Allocator.
+    ///  - `alloc` has to be a pointer to an allocation from [alloc_internal()]
+    ///     or a pointer returned by [peek()].
+    ///  - Caller is responsible for calling dtors for any objects that will be
+    ///    rewound over
     unsafe fn rewind(&self, alloc: *mut u8) {
         self.next_alloc.replace(alloc);
     }
