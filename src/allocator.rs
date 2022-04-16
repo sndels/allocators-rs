@@ -46,13 +46,13 @@ impl Drop for LinearAllocator {
 }
 
 pub trait AllocatorInternal {
-    fn alloc_internal<T>(&self, obj: T) -> Result<&mut T, AllocationError>;
+    fn alloc_internal<T>(&self, obj: T) -> &mut T;
     unsafe fn rewind(&self, alloc: *mut u8);
     fn peek(&self) -> *mut u8;
 }
 
 impl AllocatorInternal for LinearAllocator {
-    fn alloc_internal<T>(&self, obj: T) -> Result<&mut T, AllocationError> {
+    fn alloc_internal<T>(&self, obj: T) -> &mut T {
         let size_bytes = std::mem::size_of::<T>();
         let alignment = std::mem::align_of::<T>();
         // println!("size {}", size_bytes);
@@ -64,10 +64,10 @@ impl AllocatorInternal for LinearAllocator {
         let new_size = previous_size + align_offset + size_bytes;
         if new_size > self.size_bytes {
             let remaining_bytes = self.size_bytes - previous_size;
-            return Err(AllocationError::OutOfMemory(format!(
+            panic!(
                 "Tried to allocate {} bytes aligned at {} with only {} remaining.",
                 size_bytes, alignment, remaining_bytes
-            )));
+            );
         }
 
         let new_alloc = unsafe { self.next_alloc.get().add(align_offset) };
@@ -75,11 +75,11 @@ impl AllocatorInternal for LinearAllocator {
         self.next_alloc
             .replace(unsafe { new_alloc.add(size_bytes) });
 
-        Ok(unsafe {
+        unsafe {
             let t_ptr = new_alloc as *mut T;
             t_ptr.write(obj);
             &mut *t_ptr
-        })
+        }
     }
 
     /// Rewinds the allocator back to `alloc`.
@@ -102,9 +102,4 @@ impl AllocatorInternal for LinearAllocator {
     fn peek(&self) -> *mut u8 {
         self.next_alloc.get()
     }
-}
-
-#[derive(Debug)]
-pub enum AllocationError {
-    OutOfMemory(String),
 }

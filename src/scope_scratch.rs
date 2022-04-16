@@ -1,4 +1,4 @@
-use crate::allocator::{AllocationError, AllocatorInternal, LinearAllocator};
+use crate::allocator::{AllocatorInternal, LinearAllocator};
 
 use std::cell::Cell;
 
@@ -50,21 +50,17 @@ impl<'a> ScopeScratch<'a> {
     // TODO: Can we get away with no Drop?
     //       Aggregate can have no Drop of its own but store data that implements it.
     //       How does drop_in_place behave then?
-    pub fn new_obj<T>(&self, obj: T) -> Result<&mut T, AllocationError> {
+    pub fn new_obj<T>(&self, obj: T) -> &mut T {
         let mut data = self.allocator.alloc_internal(ScopeData {
             mem: std::ptr::null_mut::<u8>(),
             dtor: Some(&|ptr: *mut u8| unsafe { (ptr as *mut T).drop_in_place() }),
             previous: self.data_chain.get(),
-        })?;
+        });
 
-        match self.allocator.alloc_internal(obj) {
-            Ok(ret) => {
-                data.mem = (ret as *mut T) as *mut u8;
-                self.data_chain.replace(Some(data));
-                Ok(ret)
-            }
-            Err(why) => Err(why), // This leaves the memory allocated for dtor hanging around
-        }
+        let ret = self.allocator.alloc_internal(obj);
+        data.mem = (ret as *mut T) as *mut u8;
+        self.data_chain.replace(Some(data));
+        ret
     }
 
     // Safety bounds on allocation, approximate true PoD
@@ -74,10 +70,7 @@ impl<'a> ScopeScratch<'a> {
     //       Send + Sync - No Cells, Rcs
     // TODO: Could this be abstracted such that we could call one method for both
     //       and let the compiler do magic to figure out which it is? Sounds like specialization but for param type.
-    pub fn new_pod<T: Copy + Sized + Send + Sync>(
-        &self,
-        pod: T,
-    ) -> Result<&mut T, AllocationError> {
+    pub fn new_pod<T: Copy + Sized + Send + Sync>(&self, pod: T) -> &mut T {
         self.allocator.alloc_internal(pod)
     }
 }

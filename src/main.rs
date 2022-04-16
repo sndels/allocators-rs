@@ -127,10 +127,10 @@ fn bench_iter<T>(datas: &Vec<T>, iter: &dyn Fn(&T, usize) -> u32) -> f32 {
 }
 
 fn main() {
-    // let allocator = LinearAllocator::new(512).unwrap();
+    // let allocator = LinearAllocator::new(512);
     // let global_scope = ScopeScratch::new(&allocator);
-    // let a = global_scope.new_pod(-1.0).unwrap();
-    // let b = global_scope.new_pod(1).unwrap();
+    // let a = global_scope.new_pod(-1.0);
+    // let b = global_scope.new_pod(1);
     // println!("a {} b {}", a, b);
     // *a += 1.0;
     // *b += 2;
@@ -142,7 +142,7 @@ fn main() {
     //             y: 0.0,
     //             z: 0.0,
     //         })
-    //         .unwrap()
+    //
     // };
     // let d = {
     //     global_scope
@@ -151,33 +151,33 @@ fn main() {
     //             y: A { dummy: 0xCD },
     //             z: A { dummy: 0xDF },
     //         })
-    //         .unwrap()
+    //
     // };
     // println!("a {} b {} c {:?} d {:?}", a, b, c, d);
 
     // println!("peek {:?}", allocator.peek());
     // {
     //     let scope = global_scope.new_scope();
-    //     let a = scope.new_obj(A { dummy: 0xFF }).unwrap();
+    //     let a = scope.new_obj(A { dummy: 0xFF });
     //     let b = scope
     //         .new_obj(B {
     //             dummy: 0xFFFFFFFFFFFFFF,
     //         })
-    //         .unwrap();
-    //     let c = scope.new_obj(C { dummy: 0xFFFFFFFF }).unwrap();
-    //     let d = scope.new_pod(Vec3 { x: 0, y: 1, z: 2 }).unwrap();
+    //         ;
+    //     let c = scope.new_obj(C { dummy: 0xFFFFFFFF });
+    //     let d = scope.new_pod(Vec3 { x: 0, y: 1, z: 2 });
     //     println!("a {} b {} c {} d {:?}", a.dummy, b.dummy, c.dummy, d);
     //     println!("peek {:?}", allocator.peek());
     //     {
     //         let scope = scope.new_scope();
-    //         let a = scope.new_obj(A { dummy: 0xAA }).unwrap();
+    //         let a = scope.new_obj(A { dummy: 0xAA });
     //         let b = scope
     //             .new_obj(B {
     //                 dummy: 0xAAAAAAAAAAAA,
     //             })
-    //             .unwrap();
-    //         let c = scope.new_obj(C { dummy: 0xAAAAAAAA }).unwrap();
-    //         let d = scope.new_pod(Vec3 { x: 3, y: 4, z: 5 }).unwrap();
+    //             ;
+    //         let c = scope.new_obj(C { dummy: 0xAAAAAAAA });
+    //         let d = scope.new_pod(Vec3 { x: 3, y: 4, z: 5 });
     //         println!("a {} b {} c {} d {:?}", a.dummy, b.dummy, c.dummy, d);
     //         println!("peek {:?}", allocator.peek());
     //     }
@@ -209,8 +209,7 @@ fn main() {
     for _ in 0..iterations {
         let start = {
             let allocator = LinearAllocator::new(1024 * 1024 * 512);
-            let (datas, alloc_ns) =
-                bench_alloc(&|v| allocator.alloc_internal(CacheLine::new(v)).unwrap());
+            let (datas, alloc_ns) = bench_alloc(&|v| allocator.alloc_internal(CacheLine::new(v)));
             times.linear.alloc_ns += alloc_ns;
             times.linear.iter_ns += bench_iter(&datas, &|cache_line, v| cache_line.data[v]);
             Instant::now()
@@ -222,7 +221,7 @@ fn main() {
         let start = {
             let allocator = Box::new(LinearAllocator::new(1024 * 1024 * 512));
             let scope = ScopeScratch::new(allocator.as_ref());
-            let (datas, alloc_ns) = bench_alloc(&|v| scope.new_pod(CacheLine::new(v)).unwrap());
+            let (datas, alloc_ns) = bench_alloc(&|v| scope.new_pod(CacheLine::new(v)));
             times.scoped_pod.alloc_ns += alloc_ns;
             times.scoped_pod.iter_ns += bench_iter(&datas, &|cache_line, v| cache_line.data[v]);
             Instant::now()
@@ -234,7 +233,7 @@ fn main() {
         let start = {
             let allocator = Box::new(LinearAllocator::new(1024 * 1024 * 512));
             let scope = ScopeScratch::new(allocator.as_ref());
-            let (datas, alloc_ns) = bench_alloc(&|v| scope.new_obj(ObjCacheLine::new(v)).unwrap());
+            let (datas, alloc_ns) = bench_alloc(&|v| scope.new_obj(ObjCacheLine::new(v)));
             times.scoped_obj.alloc_ns += alloc_ns;
             times.scoped_obj.iter_ns += bench_iter(&datas, &|cache_line, v| cache_line.data[v]);
             Instant::now()
