@@ -55,7 +55,6 @@ impl AllocatorInternal for LinearAllocator {
     fn alloc_internal<T>(&self, obj: T) -> &mut T {
         let size_bytes = std::mem::size_of::<T>();
         let alignment = std::mem::align_of::<T>();
-        // println!("size {}", size_bytes);
 
         let next_alloc = self.next_alloc.get();
         let align_offset = next_alloc.align_offset(alignment);
