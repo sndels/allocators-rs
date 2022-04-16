@@ -26,8 +26,6 @@ pub struct ScopeScratch<'a, 'b> {
 
 impl Drop for ScopeScratch<'_, '_> {
     fn drop(&mut self) {
-        println!("ScopeScratch::drop()");
-
         let mut data_chain = self.data_chain.get();
         while let Some(scope) = data_chain {
             if let Some(dtor) = scope.dtor {
