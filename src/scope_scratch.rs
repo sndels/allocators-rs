@@ -1,6 +1,9 @@
 use crate::allocator::{AllocatorInternal, LinearAllocator};
 
-use std::cell::Cell;
+use std::{cell::Cell, marker::PhantomData};
+
+#[cfg(debug_assertions)]
+use std::cell::RefCell;
 
 // Inspired by Frostbite's Scope Stack Allocation
 
@@ -10,13 +13,18 @@ struct ScopeData<'a> {
     previous: Option<&'a ScopeData<'a>>,
 }
 
-pub struct ScopeScratch<'a> {
+pub struct ScopeScratch<'a, 'b> {
     allocator: &'a LinearAllocator,
     alloc_start: *mut u8,
     data_chain: Cell<Option<&'a ScopeData<'a>>>,
+    #[cfg(debug_assertions)]
+    parent_locked: Option<&'b RefCell<bool>>,
+    #[cfg(debug_assertions)]
+    locked: RefCell<bool>,
+    phantom: PhantomData<&'b u8>,
 }
 
-impl Drop for ScopeScratch<'_> {
+impl Drop for ScopeScratch<'_, '_> {
     fn drop(&mut self) {
         println!("ScopeScratch::drop()");
 
@@ -31,26 +39,57 @@ impl Drop for ScopeScratch<'_> {
         unsafe {
             self.allocator.rewind(self.alloc_start);
         }
+
+        #[cfg(debug_assertions)]
+        if let Some(parent_locked) = self.parent_locked.take() {
+            *parent_locked.borrow_mut() = false;
+        }
     }
 }
 
-impl<'a> ScopeScratch<'a> {
+impl<'a, 'b> ScopeScratch<'a, 'b> {
     pub fn new(allocator: &'a LinearAllocator) -> Self {
         Self {
             allocator,
             alloc_start: allocator.peek(),
             data_chain: Cell::new(None),
+            #[cfg(debug_assertions)]
+            parent_locked: None,
+            #[cfg(debug_assertions)]
+            locked: RefCell::new(false),
+            phantom: PhantomData,
         }
     }
 
-    pub fn new_scope(&self) -> Self {
-        Self::new(self.allocator)
+    pub fn new_scope(&'b self) -> ScopeScratch<'a, 'b> {
+        #[cfg(debug_assertions)]
+        {
+            *self.locked.borrow_mut() = true;
+        }
+        Self {
+            allocator: self.allocator,
+            alloc_start: self.allocator.peek(),
+            data_chain: Cell::new(None),
+            #[cfg(debug_assertions)]
+            parent_locked: Some(&self.locked),
+            #[cfg(debug_assertions)]
+            locked: RefCell::new(false),
+            phantom: PhantomData,
+        }
     }
 
     // TODO: Can we get away with no Drop?
     //       Aggregate can have no Drop of its own but store data that implements it.
     //       How does drop_in_place behave then?
     pub fn new_obj<T>(&self, obj: T) -> &mut T {
+        #[cfg(debug_assertions)]
+        {
+            debug_assert!(
+                !*self.locked.borrow(),
+                "Tried to allocate from a ScopedScratch that has an active child scope"
+            );
+        }
+
         let mut data = self.allocator.alloc_internal(ScopeData {
             mem: std::ptr::null_mut::<u8>(),
             dtor: Some(&|ptr: *mut u8| unsafe { (ptr as *mut T).drop_in_place() }),
@@ -71,6 +110,14 @@ impl<'a> ScopeScratch<'a> {
     // TODO: Could this be abstracted such that we could call one method for both
     //       and let the compiler do magic to figure out which it is? Sounds like specialization but for param type.
     pub fn new_pod<T: Copy + Sized + Send + Sync>(&self, pod: T) -> &mut T {
+        #[cfg(debug_assertions)]
+        {
+            debug_assert!(
+                !*self.locked.borrow(),
+                "Tried to allocate from a ScopedScratch that has an active child scope"
+            );
+        }
+
         self.allocator.alloc_internal(pod)
     }
 }
@@ -150,6 +197,22 @@ mod tests {
             assert_eq!(*a, 0xCAFEBABEu32);
             let b = scratch.new_pod(0xC0FFEEEEu32);
             assert_eq!(*b, 0xC0FFEEEEu32);
+        }
+    }
+
+    #[should_panic(
+        expected = "Tried to allocate from a ScopedScratch that has an active child scope"
+    )]
+    #[test]
+    fn active_parent_new_pod() {
+        let alloc = LinearAllocator::new(1024);
+        {
+            let scratch = ScopeScratch::new(&alloc);
+            let _ = scratch.new_pod(0xCAFEBABEu32);
+            {
+                let _scratch2 = scratch.new_scope();
+                let _ = scratch.new_pod(0xDEADCAFEu32);
+            }
         }
     }
 
