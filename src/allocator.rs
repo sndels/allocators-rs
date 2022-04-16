@@ -94,6 +94,13 @@ impl AllocatorInternal for LinearAllocator {
     ///  - Caller is responsible for calling dtors for any objects that will be
     ///    rewound over
     unsafe fn rewind(&self, alloc: *mut u8) {
+        // Let's be nice and catch the obvious error
+        // For non-PoD struct dtor validation, we are out of luck
+        debug_assert!(
+            (alloc as usize) >= (self.block_start as usize)
+                && (alloc as usize) < (self.block_start as usize) + self.size_bytes,
+            "alloc doesn't belong to this allocator"
+        );
         self.next_alloc.replace(alloc);
     }
 
