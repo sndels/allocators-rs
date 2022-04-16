@@ -16,6 +16,18 @@
             ]
         },
         {
+            "label": "Run tests",
+            "group": "build",
+            "command": "cargo",
+            "args": [
+                "test",
+            ],
+            "options": {},
+            "problemMatcher": [
+                "$rustc"
+            ]
+        },
+        {
             "label": "Build release",
             "group": "build",
             "command": "cargo",

@@ -103,3 +103,151 @@ impl AllocatorInternal for LinearAllocator {
         self.next_alloc.get()
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use std::mem::{align_of, drop, size_of, transmute};
+
+    #[test]
+    fn alloc_u8() {
+        let alloc = LinearAllocator::new(1024);
+
+        let a = alloc.alloc_internal(0xABu8);
+        assert_eq!(*a, 0xABu8);
+        assert_eq!(a as *const u8, alloc.block_start);
+        assert_eq!(
+            unsafe { alloc.next_alloc.get().offset_from(alloc.block_start) },
+            size_of::<u8>() as isize
+        );
+    }
+
+    #[test]
+    fn alloc_pod() {
+        let alloc = LinearAllocator::new(1024);
+
+        #[allow(dead_code)]
+        struct A {
+            data: u32,
+        }
+
+        let a = alloc.alloc_internal(A { data: 0xDEADC0DE });
+        assert_eq!(a.data, 0xDEADC0DE);
+        assert_eq!(
+            unsafe { transmute::<&mut A, *const u8>(a) },
+            alloc.block_start
+        );
+        assert_eq!(
+            unsafe { alloc.next_alloc.get().offset_from(alloc.block_start) },
+            size_of::<A>() as isize
+        );
+    }
+
+    #[test]
+    fn alloc_drop() {
+        let alloc = LinearAllocator::new(1024);
+
+        #[allow(dead_code)]
+        struct A {
+            data: Vec<u32>,
+        }
+
+        let a = alloc.alloc_internal(A {
+            data: vec![0xC0FFEEEE],
+        });
+        assert_eq!(a.data.len(), 1);
+        assert_eq!(a.data[0], 0xC0FFEEEE);
+        assert_eq!(
+            unsafe { transmute::<&mut A, *const u8>(a) },
+            alloc.block_start
+        );
+        assert_eq!(
+            unsafe { alloc.next_alloc.get().offset_from(alloc.block_start) },
+            size_of::<A>() as isize
+        );
+
+        drop(a);
+    }
+
+    #[test]
+    fn two_allocs() {
+        let alloc = LinearAllocator::new(1024);
+
+        let a = alloc.alloc_internal(0xCAFEBABEu32);
+        let b = alloc.alloc_internal(0xDEADCAFEu32);
+        let a_ptr = a as *const u32;
+        let b_ptr = b as *const u32;
+        assert_eq!(*a, 0xCAFEBABEu32);
+        assert_eq!(*b, 0xDEADCAFEu32);
+        assert_eq!(unsafe { b_ptr.offset_from(a_ptr) }, 1);
+        assert_eq!(
+            unsafe { alloc.next_alloc.get().offset_from(alloc.block_start) },
+            size_of::<u32>() as isize * 2
+        );
+    }
+
+    #[should_panic(
+        expected = "Tried to allocate 1025 bytes aligned at 1 with only 1024 remaining."
+    )]
+    #[test]
+    fn overflow_first() {
+        let alloc = LinearAllocator::new(1024);
+        let _ = alloc.alloc_internal([0u8; 1025]);
+    }
+
+    #[should_panic(expected = "Tried to allocate 1000 bytes aligned at 4 with only 768 remaining.")]
+    #[test]
+    fn overflow_second() {
+        let alloc = LinearAllocator::new(1024);
+        let _ = alloc.alloc_internal([0u8; 256]);
+        let _ = alloc.alloc_internal([0u32; 250]);
+    }
+
+    #[test]
+    fn different_alignment() {
+        let alloc = LinearAllocator::new(1024);
+
+        #[allow(dead_code)]
+        #[repr(C)]
+        struct A {
+            data: u8,
+        }
+        #[allow(dead_code)]
+        #[repr(C)]
+        struct B {
+            data: u64,
+        }
+        assert_ne!(size_of::<A>() % align_of::<B>(), 0);
+
+        let _ = alloc.alloc_internal(A { data: 0 });
+        let b = alloc.alloc_internal(B { data: 0 });
+        assert_eq!((b as *const B as usize) % align_of::<B>(), 0);
+    }
+
+    #[test]
+    fn rewind() {
+        let alloc = LinearAllocator::new(1024);
+
+        let _ = alloc.alloc_internal(0u8);
+        let target = alloc.peek();
+        let _ = alloc.alloc_internal(0u64);
+        assert_ne!(alloc.next_alloc.get(), target);
+        unsafe { alloc.rewind(target) };
+        assert_eq!(alloc.next_alloc.get(), target);
+    }
+
+    #[should_panic(expected = "alloc doesn't belong to this allocator")]
+    #[test]
+    fn rewind_assert_below() {
+        let alloc = LinearAllocator::new(1024);
+        unsafe { alloc.rewind(0x1 as *mut u8) };
+    }
+
+    #[should_panic(expected = "alloc doesn't belong to this allocator")]
+    #[test]
+    fn rewind_assert_above() {
+        let alloc = LinearAllocator::new(1024);
+        unsafe { alloc.rewind(alloc.peek().offset(1024)) }
+    }
+}
