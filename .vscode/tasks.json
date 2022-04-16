@@ -8,7 +8,6 @@
             "group": "build",
             "command": "cargo",
             "args": [
-                "+nightly",
                 "clippy",
             ],
             "options": {},
@@ -21,7 +20,6 @@
             "group": "build",
             "command": "cargo",
             "args": [
-                "+nightly",
                 "build",
                 "--release",
             ],
@@ -39,7 +37,6 @@
             "group": "build",
             "command": "cargo",
             "args": [
-                "+nightly",
                 "build",
             ],
             "options": {
