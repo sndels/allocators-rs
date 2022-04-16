@@ -208,7 +208,7 @@ fn main() {
     }
     for _ in 0..iterations {
         let start = {
-            let allocator = LinearAllocator::new(1024 * 1024 * 512).unwrap();
+            let allocator = LinearAllocator::new(1024 * 1024 * 512);
             let (datas, alloc_ns) =
                 bench_alloc(&|v| allocator.alloc_internal(CacheLine::new(v)).unwrap());
             times.linear.alloc_ns += alloc_ns;
@@ -220,7 +220,7 @@ fn main() {
     }
     for _ in 0..iterations {
         let start = {
-            let allocator = Box::new(LinearAllocator::new(1024 * 1024 * 512).unwrap());
+            let allocator = Box::new(LinearAllocator::new(1024 * 1024 * 512));
             let scope = ScopeScratch::new(allocator.as_ref());
             let (datas, alloc_ns) = bench_alloc(&|v| scope.new_pod(CacheLine::new(v)).unwrap());
             times.scoped_pod.alloc_ns += alloc_ns;
@@ -232,7 +232,7 @@ fn main() {
     }
     for _ in 0..iterations {
         let start = {
-            let allocator = Box::new(LinearAllocator::new(1024 * 1024 * 512).unwrap());
+            let allocator = Box::new(LinearAllocator::new(1024 * 1024 * 512));
             let scope = ScopeScratch::new(allocator.as_ref());
             let (datas, alloc_ns) = bench_alloc(&|v| scope.new_obj(ObjCacheLine::new(v)).unwrap());
             times.scoped_obj.alloc_ns += alloc_ns;

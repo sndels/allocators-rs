@@ -1,3 +1,4 @@
+use static_assertions::{const_assert_eq, const_assert_ne};
 use std::{alloc::Layout, cell::Cell};
 
 pub struct LinearAllocator {
@@ -11,33 +12,28 @@ pub struct LinearAllocator {
 const L1_CACHE_LINE_SIZE: usize = 64;
 
 impl LinearAllocator {
-    pub fn new(size_bytes: usize) -> Result<Self, CreateError> {
-        // println!("LinearAllocator::new({})", size_bytes);
-        if size_bytes == 0 {
-            return Err(CreateError::ZeroBytes(
-                "Cannot create allocator with size 0".into(),
-            ));
-        }
+    pub fn new(size_bytes: usize) -> Self {
+        debug_assert_ne!(size_bytes, 0, "Cannot create an allocator with size 0");
 
-        let layout = Layout::from_size_align(size_bytes, L1_CACHE_LINE_SIZE).map_err(|err| {
-            CreateError::Layout(format!("Failed to create memory layout: {:?}", err))
-        })?;
-
+        // align shouldn't be 0
+        const_assert_ne!(L1_CACHE_LINE_SIZE, 0);
+        // align should be a power of two
+        const_assert_eq!(L1_CACHE_LINE_SIZE & (L1_CACHE_LINE_SIZE - 1), 0);
+        // Since we check align ourselves, this should only fail on overflow.
+        let layout = Layout::from_size_align(size_bytes, L1_CACHE_LINE_SIZE)
+            .expect("Failed to create memory layout");
         let block_start = unsafe { std::alloc::alloc(layout) };
 
         if block_start.is_null() {
-            // TODO: For what reason?
-            return Err(CreateError::BackingAllocation(
-                "Backing allocation failed for some reason".into(),
-            ));
+            std::alloc::handle_alloc_error(layout);
         }
 
-        Ok(Self {
+        Self {
             block_start,
             layout,
             size_bytes,
             next_alloc: Cell::new(block_start),
-        })
+        }
     }
 }
 
@@ -112,11 +108,4 @@ impl AllocatorInternal for LinearAllocator {
 #[derive(Debug)]
 pub enum AllocationError {
     OutOfMemory(String),
-}
-
-#[derive(Debug)]
-pub enum CreateError {
-    ZeroBytes(String),
-    Layout(String),
-    BackingAllocation(String),
 }
