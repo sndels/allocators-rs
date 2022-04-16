@@ -39,7 +39,6 @@ impl LinearAllocator {
 
 impl Drop for LinearAllocator {
     fn drop(&mut self) {
-        // println!("LinearAllocator::drop()");
         unsafe {
             std::alloc::dealloc(self.block_start, self.layout);
         }
