@@ -101,13 +101,10 @@ impl<'a, 'b> ScopeScratch<'a, 'b> {
     }
 
     // Safety bounds on allocation, approximate true PoD
-    //       Copy - won't have Drop, won't have Boxes.
-    //       (could be unhelpful if objects are large but we likely only want to use this for small objects)
-    //       Sized - Can be in stack, see above
-    //       Send + Sync - No Cells, Rcs
+    //       Copy - won't have Drop
     // TODO: Could this be abstracted such that we could call one method for both
     //       and let the compiler do magic to figure out which it is? Sounds like specialization but for param type.
-    pub fn new_pod<T: Copy + Sized + Send + Sync>(&self, pod: T) -> &mut T {
+    pub fn new_pod<T: Copy>(&self, pod: T) -> &mut T {
         #[cfg(debug_assertions)]
         {
             debug_assert!(
