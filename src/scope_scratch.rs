@@ -74,3 +74,115 @@ impl<'a> ScopeScratch<'a> {
         self.allocator.alloc_internal(pod)
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn alloc_primitive() {
+        let alloc = LinearAllocator::new(1024);
+        let scratch = ScopeScratch::new(&alloc);
+
+        let a = scratch.new_pod(0xABu8);
+        assert_eq!(*a, 0xABu8);
+    }
+
+    #[test]
+    fn alloc_pod() {
+        let alloc = LinearAllocator::new(1024);
+        let scratch = ScopeScratch::new(&alloc);
+
+        #[derive(Clone, Copy)]
+        #[allow(dead_code)]
+        struct A {
+            data: u32,
+        }
+
+        let a = scratch.new_pod(A {
+            data: 0xDEADC0DEu32,
+        });
+        assert_eq!(a.data, 0xDEADC0DEu32);
+    }
+
+    #[test]
+    fn alloc_obj() {
+        let alloc = LinearAllocator::new(1024);
+        let scratch = ScopeScratch::new(&alloc);
+
+        #[allow(dead_code)]
+        struct A {
+            data: Vec<u32>,
+        }
+
+        let a = scratch.new_obj(A {
+            data: vec![0xC0FFEEEEu32],
+        });
+        assert_eq!(a.data.len(), 1);
+        assert_eq!(a.data[0], 0xC0FFEEEEu32);
+    }
+
+    #[test]
+    fn scope_rewind() {
+        let alloc = LinearAllocator::new(1024);
+        let start_ptr = alloc.peek();
+        {
+            let scratch = ScopeScratch::new(&alloc);
+            let _ = scratch.new_pod(0u32);
+            assert_ne!(start_ptr, alloc.peek());
+        }
+        assert_eq!(start_ptr, alloc.peek());
+    }
+
+    #[test]
+    fn new_scope() {
+        let alloc = LinearAllocator::new(1024);
+        {
+            let scratch = ScopeScratch::new(&alloc);
+            let a = scratch.new_pod(0xCAFEBABEu32);
+            assert_eq!(*a, 0xCAFEBABEu32);
+            {
+                let scratch2 = scratch.new_scope();
+                let b = scratch2.new_pod(0xDEADCAFEu32);
+                assert_eq!(*b, 0xDEADCAFEu32);
+            }
+            assert_eq!(*a, 0xCAFEBABEu32);
+            let b = scratch.new_pod(0xC0FFEEEEu32);
+            assert_eq!(*b, 0xC0FFEEEEu32);
+        }
+    }
+
+    #[test]
+    fn dtor_order() {
+        struct A<'a> {
+            data: u32,
+            dtor_push: &'a mut dyn FnMut(u32) -> (),
+        }
+        impl<'a> Drop for A<'a> {
+            fn drop(&mut self) {
+                (self.dtor_push)(self.data);
+            }
+        }
+
+        let mut dtor_data: Vec<u32> = vec![];
+        let mut dtor_push = |v| dtor_data.push(v);
+
+        let alloc = LinearAllocator::new(1024);
+        {
+            let scratch = ScopeScratch::new(&alloc);
+
+            let _ = scratch.new_obj(A {
+                data: 0xCAFEBABEu32,
+                dtor_push: &mut dtor_push,
+            });
+            let _ = scratch.new_obj(A {
+                data: 0xDEADCAFEu32,
+                dtor_push: &mut dtor_push,
+            });
+        }
+        assert_eq!(dtor_data.len(), 2);
+        assert_eq!(dtor_data[0], 0xDEADCAFEu32);
+        assert_eq!(dtor_data[1], 0xCAFEBABEu32);
+    }
+}
