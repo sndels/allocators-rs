@@ -68,11 +68,11 @@ macro_rules! declare_structs {
     };
 }
 
-declare_structs!(CacheLine64, ObjCacheLine64, 64);
-declare_structs!(CacheLine128, ObjCacheLine128, 128);
-declare_structs!(CacheLine256, ObjCacheLine256, 256);
-declare_structs!(CacheLine512, ObjCacheLine512, 512);
-declare_structs!(CacheLine1k, ObjCacheLine1k, 1024);
+declare_structs!(Pod64, Obj64, 64);
+declare_structs!(Pod128, Obj128, 128);
+declare_structs!(Pod256, Obj256, 256);
+declare_structs!(Pod512, Obj512, 512);
+declare_structs!(Pod1k, Obj1k, 1024);
 
 struct Timing {
     alloc_ns: f32,
@@ -276,10 +276,10 @@ fn bench<T: Copy + BenchNew + BenchData, V: BenchNew + BenchData>() -> String {
 
 fn main() {
     let mut results = vec![];
-    results.push(bench::<CacheLine64, ObjCacheLine64>());
-    results.push(bench::<CacheLine128, ObjCacheLine128>());
-    results.push(bench::<CacheLine256, ObjCacheLine256>());
-    results.push(bench::<CacheLine512, ObjCacheLine512>());
-    results.push(bench::<CacheLine1k, ObjCacheLine1k>());
+    results.push(bench::<Pod64, Obj64>());
+    results.push(bench::<Pod128, Obj128>());
+    results.push(bench::<Pod256, Obj256>());
+    results.push(bench::<Pod512, Obj512>());
+    results.push(bench::<Pod1k, Obj1k>());
     println!("{}", results.join("\n"));
 }
