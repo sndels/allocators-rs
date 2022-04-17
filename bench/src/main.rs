@@ -116,7 +116,11 @@ fn bench_alloc<'a, T: BenchData>(
     alloc: &dyn Fn(&'a ScopedScratch, u32) -> T,
 ) -> (Vec<T>, f32) {
     let start = Instant::now();
-    let datas: Vec<T> = (0..ITEM_COUNT as u32).map(|v| alloc(scratch, v)).collect();
+    let mut datas: Vec<T> = vec![];
+    datas.reserve(ITEM_COUNT);
+    for i in 0..ITEM_COUNT as u32 {
+        datas.push(alloc(scratch, i));
+    }
     let end = Instant::now();
     let spent_ns = (end - start).as_nanos() as f32;
     (datas, spent_ns)
