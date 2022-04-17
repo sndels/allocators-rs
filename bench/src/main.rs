@@ -128,7 +128,7 @@ fn bench_iter<T: BenchData>(datas: &Vec<T>) -> (u32, f32) {
     let mut acc = 0u32;
     for d in datas {
         acc = acc.wrapping_add(d.data(v));
-        v = (v + 1) % 16;
+        v = (v + 1) & 0xF; // Assume data is always at least 16 elements
     }
     let end = Instant::now();
     let spent_ns = (end - start).as_nanos() as f32;
