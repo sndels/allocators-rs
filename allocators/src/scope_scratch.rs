@@ -1,9 +1,6 @@
 use crate::allocator::{AllocatorInternal, LinearAllocator};
 
-use std::{cell::Cell, marker::PhantomData};
-
-#[cfg(debug_assertions)]
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 // Inspired by Frostbite's Scope Stack Allocation
 
@@ -17,11 +14,8 @@ pub struct ScopeScratch<'a, 'b> {
     allocator: &'a LinearAllocator,
     alloc_start: *mut u8,
     data_chain: Cell<Option<&'a ScopeData<'a>>>,
-    #[cfg(debug_assertions)]
     parent_locked: Option<&'b RefCell<bool>>,
-    #[cfg(debug_assertions)]
     locked: RefCell<bool>,
-    phantom: PhantomData<&'b u8>,
 }
 
 impl Drop for ScopeScratch<'_, '_> {
@@ -34,11 +28,15 @@ impl Drop for ScopeScratch<'_, '_> {
             data_chain = scope.previous;
         }
 
+        // # Safety
+        //  - self.alloc_start is from self.allocator.peek() at the start of the scope
+        //  - dtors for the objects that require it in this scope were just called
+        //    - lock assertions ensure only the innermost scope is ever used
+        //  - Any references to objects in this scope are limited by its lifetime
         unsafe {
             self.allocator.rewind(self.alloc_start);
         }
 
-        #[cfg(debug_assertions)]
         if let Some(parent_locked) = self.parent_locked.take() {
             *parent_locked.borrow_mut() = false;
         }
@@ -51,42 +49,34 @@ impl<'a, 'b> ScopeScratch<'a, 'b> {
             allocator,
             alloc_start: allocator.peek(),
             data_chain: Cell::new(None),
-            #[cfg(debug_assertions)]
             parent_locked: None,
-            #[cfg(debug_assertions)]
             locked: RefCell::new(false),
-            phantom: PhantomData,
         }
     }
 
     pub fn new_scope(&'b self) -> ScopeScratch<'a, 'b> {
-        #[cfg(debug_assertions)]
-        {
-            *self.locked.borrow_mut() = true;
-        }
+        *self.locked.borrow_mut() = true;
         Self {
             allocator: self.allocator,
             alloc_start: self.allocator.peek(),
             data_chain: Cell::new(None),
-            #[cfg(debug_assertions)]
             parent_locked: Some(&self.locked),
-            #[cfg(debug_assertions)]
             locked: RefCell::new(false),
-            phantom: PhantomData,
         }
     }
 
+    // Interior mutability required by interface
+    // The references will be to non-overlapping memory as the allocator is only
+    // rewound on drop
+    #[allow(clippy::mut_from_ref)]
     // TODO: Can we get away with no Drop?
     //       Aggregate can have no Drop of its own but store data that implements it.
     //       How does drop_in_place behave then?
     pub fn new_obj<T>(&self, obj: T) -> &mut T {
-        #[cfg(debug_assertions)]
-        {
-            debug_assert!(
-                !*self.locked.borrow(),
-                "Tried to allocate from a ScopedScratch that has an active child scope"
-            );
-        }
+        assert!(
+            !*self.locked.borrow(),
+            "Tried to allocate from a ScopedScratch that has an active child scope"
+        );
 
         let mut data = self.allocator.alloc_internal(ScopeData {
             mem: std::ptr::null_mut::<u8>(),
@@ -100,18 +90,19 @@ impl<'a, 'b> ScopeScratch<'a, 'b> {
         ret
     }
 
+    // Interior mutability required by interface
+    // The references will be to non-overlapping memory as the allocator is only
+    // rewound on drop
+    #[allow(clippy::mut_from_ref)]
     // Safety bounds on allocation, approximate true PoD
     //       Copy - won't have Drop
     // TODO: Could this be abstracted such that we could call one method for both
     //       and let the compiler do magic to figure out which it is? Sounds like specialization but for param type.
     pub fn new_pod<T: Copy>(&self, pod: T) -> &mut T {
-        #[cfg(debug_assertions)]
-        {
-            debug_assert!(
-                !*self.locked.borrow(),
-                "Tried to allocate from a ScopedScratch that has an active child scope"
-            );
-        }
+        assert!(
+            !*self.locked.borrow(),
+            "Tried to allocate from a ScopedScratch that has an active child scope"
+        );
 
         self.allocator.alloc_internal(pod)
     }

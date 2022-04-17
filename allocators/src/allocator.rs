@@ -46,12 +46,28 @@ impl Drop for LinearAllocator {
 }
 
 pub trait AllocatorInternal {
+    // Interior mutability required by interface
+    // The references will be to non-overlapping memory as long as [rewind()] is not misused.
+    #[allow(clippy::mut_from_ref)]
+    /// Allocates and initializes `obj`
     fn alloc_internal<T>(&self, obj: T) -> &mut T;
+
+    /// Rewinds the allocator back to `alloc`.
+    /// # Safety
+    ///  - `alloc` has to be a pointer to an allocation from [alloc_internal()]
+    ///     or a pointer returned by [peek()].
+    ///  - Caller is responsible for calling drop on objects returned by
+    ///    [alloc_internal()] that will be rewound over, if they don't implement Copy
+    ///  - Caller also needs to ensure that any references held to the rewound
+    ///    objects are dropped
     unsafe fn rewind(&self, alloc: *mut u8);
+
+    /// Returns the pointer to the start of the free block
     fn peek(&self) -> *mut u8;
 }
 
 impl AllocatorInternal for LinearAllocator {
+    #[allow(clippy::mut_from_ref)]
     fn alloc_internal<T>(&self, obj: T) -> &mut T {
         let size_bytes = std::mem::size_of::<T>();
         let alignment = std::mem::align_of::<T>();
@@ -81,12 +97,6 @@ impl AllocatorInternal for LinearAllocator {
         }
     }
 
-    /// Rewinds the allocator back to `alloc`.
-    /// # Safety
-    ///  - `alloc` has to be a pointer to an allocation from [alloc_internal()]
-    ///     or a pointer returned by [peek()].
-    ///  - Caller is responsible for calling dtors for any objects that will be
-    ///    rewound over
     unsafe fn rewind(&self, alloc: *mut u8) {
         // Let's be nice and catch the obvious error
         // For non-PoD struct dtor validation, we are out of luck
