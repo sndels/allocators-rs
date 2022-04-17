@@ -117,7 +117,7 @@ impl AllocatorInternal for LinearAllocator {
 mod tests {
 
     use super::*;
-    use std::mem::{align_of, drop, size_of, transmute};
+    use std::mem::{align_of, drop, size_of};
 
     #[test]
     fn alloc_u8() {
@@ -143,10 +143,7 @@ mod tests {
 
         let a = alloc.alloc_internal(A { data: 0xDEADC0DE });
         assert_eq!(a.data, 0xDEADC0DE);
-        assert_eq!(
-            unsafe { transmute::<&mut A, *const u8>(a) },
-            alloc.block_start
-        );
+        assert_eq!(a as *const A as *const u8, alloc.block_start);
         assert_eq!(
             unsafe { alloc.next_alloc.get().offset_from(alloc.block_start) },
             size_of::<A>() as isize
@@ -167,10 +164,7 @@ mod tests {
         });
         assert_eq!(a.data.len(), 1);
         assert_eq!(a.data[0], 0xC0FFEEEE);
-        assert_eq!(
-            unsafe { transmute::<&mut A, *const u8>(a) },
-            alloc.block_start
-        );
+        assert_eq!(a as *const A as *const u8, alloc.block_start);
         assert_eq!(
             unsafe { alloc.next_alloc.get().offset_from(alloc.block_start) },
             size_of::<A>() as isize
