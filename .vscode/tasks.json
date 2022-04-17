@@ -10,7 +10,9 @@
             "args": [
                 "clippy",
             ],
-            "options": {},
+            "options": {
+                "cwd": "${workspaceRoot}/allocators"
+            },
             "problemMatcher": [
                 "$rustc"
             ]
@@ -22,13 +24,15 @@
             "args": [
                 "test",
             ],
-            "options": {},
+            "options": {
+                "cwd": "${workspaceRoot}/allocators"
+            },
             "problemMatcher": [
                 "$rustc"
             ]
         },
         {
-            "label": "Build release",
+            "label": "Build bench",
             "group": "build",
             "command": "cargo",
             "args": [
@@ -36,22 +40,7 @@
                 "--release",
             ],
             "options": {
-                "env": {
-                    "RUSTFLAGS": "-g"
-                }
-            },
-            "problemMatcher": [
-                "$rustc"
-            ]
-        },
-        {
-            "label": "Build debug",
-            "group": "build",
-            "command": "cargo",
-            "args": [
-                "build",
-            ],
-            "options": {
+                "cwd": "${workspaceRoot}/bench",
                 "env": {
                     "RUSTFLAGS": "-g"
                 }

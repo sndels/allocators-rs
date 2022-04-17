@@ -5,44 +5,24 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(LLDB) Launch release",
+            "name": "(LLDB) Launch bench",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/target/Release/linear-allocator",
+            "program": "${workspaceFolder}/target/Release/bench",
             "args": [],
             "cwd": "${fileDirname}",
-            "console": "integratedTerminal"
+            "console": "internalConsole"
         },
         {
-            "name": "(LLDB) Launch debug",
-            "type": "lldb",
-            "request": "launch",
-            "program": "${workspaceFolder}/target/Debug/linear-allocator",
-            "args": [],
-            "cwd": "${fileDirname}",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "(Windows) Launch release",
+            "name": "(Windows) Launch bench",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/target/Release/linear-allocator.exe",
+            "program": "${workspaceFolder}/target/Release/bench.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
             "environment": [],
-            "console": "externalTerminal"
+            "console": "internalConsole"
         },
-        {
-            "name": "(Windows) Launch debug",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/target/Debug/linear-allocator.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${fileDirname}",
-            "environment": [],
-            "console": "externalTerminal"
-        }
     ]
 }

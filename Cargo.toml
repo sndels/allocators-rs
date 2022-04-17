@@ -1,9 +1,2 @@
-[package]
-name = "linear-allocator"
-version = "0.1.0"
-authors = ["Santeri Salmijärvi <santeri.salmijarvi@iki.fi>"]
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[dependencies]
-static_assertions = "1.1.0"
+[workspace]
+members = ["bench", "allocators"]
