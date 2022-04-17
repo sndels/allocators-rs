@@ -1,4 +1,4 @@
-use allocators::{LinearAllocator, ScopeScratch};
+use allocators::{LinearAllocator, ScopedScratch};
 
 use std::time::Instant;
 
@@ -112,8 +112,8 @@ const ITERATIONS: usize = 10;
 const TOTAL_ALLOCATIONS: usize = ITEM_COUNT * ITERATIONS;
 
 fn bench_alloc<'a, T: BenchData>(
-    scratch: &'a ScopeScratch,
-    alloc: &dyn Fn(&'a ScopeScratch, u32) -> T,
+    scratch: &'a ScopedScratch,
+    alloc: &dyn Fn(&'a ScopedScratch, u32) -> T,
 ) -> (Vec<T>, f32) {
     let start = Instant::now();
     let datas: Vec<T> = (0..ITEM_COUNT as u32).map(|v| alloc(scratch, v)).collect();
@@ -135,11 +135,11 @@ fn bench_iter<T: BenchData>(datas: &Vec<T>) -> (u32, f32) {
     (acc, spent_ns)
 }
 
-fn new_pod<'a, T: Copy + BenchNew + BenchData>(scratch: &'a ScopeScratch, v: u32) -> &'a mut T {
+fn new_pod<'a, T: Copy + BenchNew + BenchData>(scratch: &'a ScopedScratch, v: u32) -> &'a mut T {
     scratch.new_pod(T::new(v))
 }
 
-fn new_obj<'a, T: BenchNew + BenchData>(scratch: &'a ScopeScratch, v: u32) -> &'a mut T {
+fn new_obj<'a, T: BenchNew + BenchData>(scratch: &'a ScopedScratch, v: u32) -> &'a mut T {
     scratch.new_obj(T::new(v))
 }
 
@@ -155,9 +155,7 @@ fn bench<T: Copy + BenchNew + BenchData, V: BenchNew + BenchData>() -> String {
     let mut times = TestTimes::default();
 
     // Allocate space for both the objects and potential ScopeData
-    let allocator = Box::new(LinearAllocator::new(
-        ITEM_COUNT * (std::mem::size_of::<T>() + 32),
-    ));
+    let allocator = LinearAllocator::new(ITEM_COUNT * (std::mem::size_of::<T>() + 32));
 
     macro_rules! bench {
         ($name:expr, $time:expr, $alloc_fn:expr) => {
@@ -165,7 +163,7 @@ fn bench<T: Copy + BenchNew + BenchData, V: BenchNew + BenchData>() -> String {
             for i in 0..ITERATIONS {
                 println!("{} iter {}", $name, i);
                 let dtor_start = {
-                    let scope = ScopeScratch::new(&allocator);
+                    let scope = ScopedScratch::new(&allocator);
                     let (datas, alloc_ns) = bench_alloc(&scope, $alloc_fn);
                     $time.alloc_ns += alloc_ns;
                     let (acc, iter_ns) = bench_iter(&datas);

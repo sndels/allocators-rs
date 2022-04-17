@@ -3,6 +3,8 @@ use crate::allocator::{AllocatorInternal, LinearAllocator};
 use std::cell::{Cell, RefCell};
 
 // Inspired by Frostbite's Scope Stack Allocation
+// Runtime asserts that only the innermost scope is used
+// Perf impact seems negligible for scope alloc, drop and individual allocs
 
 struct ScopeData<'a> {
     mem: *mut u8,
@@ -10,7 +12,7 @@ struct ScopeData<'a> {
     previous: Option<&'a ScopeData<'a>>,
 }
 
-pub struct ScopeScratch<'a, 'b> {
+pub struct ScopedScratch<'a, 'b> {
     allocator: &'a LinearAllocator,
     alloc_start: *mut u8,
     data_chain: Cell<Option<&'a ScopeData<'a>>>,
@@ -18,7 +20,7 @@ pub struct ScopeScratch<'a, 'b> {
     locked: RefCell<bool>,
 }
 
-impl Drop for ScopeScratch<'_, '_> {
+impl Drop for ScopedScratch<'_, '_> {
     fn drop(&mut self) {
         let mut data_chain = self.data_chain.get();
         while let Some(scope) = data_chain {
@@ -37,13 +39,13 @@ impl Drop for ScopeScratch<'_, '_> {
             self.allocator.rewind(self.alloc_start);
         }
 
-        if let Some(parent_locked) = self.parent_locked.take() {
+        if let Some(parent_locked) = self.parent_locked {
             *parent_locked.borrow_mut() = false;
         }
     }
 }
 
-impl<'a, 'b> ScopeScratch<'a, 'b> {
+impl<'a, 'b> ScopedScratch<'a, 'b> {
     pub fn new(allocator: &'a LinearAllocator) -> Self {
         Self {
             allocator,
@@ -54,7 +56,7 @@ impl<'a, 'b> ScopeScratch<'a, 'b> {
         }
     }
 
-    pub fn new_scope(&'b self) -> ScopeScratch<'a, 'b> {
+    pub fn new_scope(&'b self) -> ScopedScratch<'a, 'b> {
         *self.locked.borrow_mut() = true;
         Self {
             allocator: self.allocator,
@@ -116,7 +118,7 @@ mod tests {
     #[test]
     fn alloc_primitive() {
         let alloc = LinearAllocator::new(1024);
-        let scratch = ScopeScratch::new(&alloc);
+        let scratch = ScopedScratch::new(&alloc);
 
         let a = scratch.new_pod(0xABu8);
         assert_eq!(*a, 0xABu8);
@@ -125,7 +127,7 @@ mod tests {
     #[test]
     fn alloc_pod() {
         let alloc = LinearAllocator::new(1024);
-        let scratch = ScopeScratch::new(&alloc);
+        let scratch = ScopedScratch::new(&alloc);
 
         #[derive(Clone, Copy)]
         #[allow(dead_code)]
@@ -142,7 +144,7 @@ mod tests {
     #[test]
     fn alloc_obj() {
         let alloc = LinearAllocator::new(1024);
-        let scratch = ScopeScratch::new(&alloc);
+        let scratch = ScopedScratch::new(&alloc);
 
         #[allow(dead_code)]
         struct A {
@@ -161,7 +163,7 @@ mod tests {
         let alloc = LinearAllocator::new(1024);
         let start_ptr = alloc.peek();
         {
-            let scratch = ScopeScratch::new(&alloc);
+            let scratch = ScopedScratch::new(&alloc);
             let _ = scratch.new_pod(0u32);
             assert_ne!(start_ptr, alloc.peek());
         }
@@ -172,7 +174,7 @@ mod tests {
     fn new_scope() {
         let alloc = LinearAllocator::new(1024);
         {
-            let scratch = ScopeScratch::new(&alloc);
+            let scratch = ScopedScratch::new(&alloc);
             let a = scratch.new_pod(0xCAFEBABEu32);
             assert_eq!(*a, 0xCAFEBABEu32);
             {
@@ -193,7 +195,7 @@ mod tests {
     fn active_parent_new_pod() {
         let alloc = LinearAllocator::new(1024);
         {
-            let scratch = ScopeScratch::new(&alloc);
+            let scratch = ScopedScratch::new(&alloc);
             let _ = scratch.new_pod(0xCAFEBABEu32);
             {
                 let _scratch2 = scratch.new_scope();
@@ -219,7 +221,7 @@ mod tests {
 
         let alloc = LinearAllocator::new(1024);
         {
-            let scratch = ScopeScratch::new(&alloc);
+            let scratch = ScopedScratch::new(&alloc);
 
             let _ = scratch.new_obj(A {
                 data: 0xCAFEBABEu32,

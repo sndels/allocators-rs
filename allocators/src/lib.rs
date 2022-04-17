@@ -1,5 +1,5 @@
 mod allocator;
-mod scope_scratch;
+mod scoped_scratch;
 
 pub use allocator::LinearAllocator;
-pub use scope_scratch::ScopeScratch;
+pub use scoped_scratch::ScopedScratch;
