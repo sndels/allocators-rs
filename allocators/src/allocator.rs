@@ -50,7 +50,7 @@ pub trait AllocatorInternal {
     // The references will be to non-overlapping memory as long as [rewind()] is not misused.
     #[allow(clippy::mut_from_ref)]
     /// Allocates and initializes `obj`
-    fn alloc_internal<T>(&self, obj: T) -> &mut T;
+    fn alloc_internal<T: Sized>(&self, obj: T) -> &mut T;
 
     /// Rewinds the allocator back to `alloc`.
     /// # Safety
@@ -68,7 +68,7 @@ pub trait AllocatorInternal {
 
 impl AllocatorInternal for LinearAllocator {
     #[allow(clippy::mut_from_ref)]
-    fn alloc_internal<T>(&self, obj: T) -> &mut T {
+    fn alloc_internal<T: Sized>(&self, obj: T) -> &mut T {
         let size_bytes = std::mem::size_of::<T>();
         let alignment = std::mem::align_of::<T>();
 

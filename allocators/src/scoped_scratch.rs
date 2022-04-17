@@ -74,7 +74,7 @@ impl<'a, 'b> ScopedScratch<'a, 'b> {
     // TODO: Can we get away with no Drop?
     //       Aggregate can have no Drop of its own but store data that implements it.
     //       How does drop_in_place behave then?
-    pub fn new_obj<T>(&self, obj: T) -> &mut T {
+    pub fn new_obj<T: Sized>(&self, obj: T) -> &mut T {
         assert!(
             !*self.locked.borrow(),
             "Tried to allocate from a ScopedScratch that has an active child scope"
@@ -100,7 +100,7 @@ impl<'a, 'b> ScopedScratch<'a, 'b> {
     //       Copy - won't have Drop
     // TODO: Could this be abstracted such that we could call one method for both
     //       and let the compiler do magic to figure out which it is? Sounds like specialization but for param type.
-    pub fn new_pod<T: Copy>(&self, pod: T) -> &mut T {
+    pub fn new_pod<T: Copy + Sized>(&self, pod: T) -> &mut T {
         assert!(
             !*self.locked.borrow(),
             "Tried to allocate from a ScopedScratch that has an active child scope"
