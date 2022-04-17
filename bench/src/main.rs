@@ -155,7 +155,7 @@ fn bench<T: Copy + BenchNew + BenchData, V: BenchNew + BenchData>() -> String {
     let mut times = TestTimes::default();
 
     // Allocate space for both the objects and potential ScopeData
-    let allocator = LinearAllocator::new(ITEM_COUNT * (std::mem::size_of::<T>() + 32));
+    let mut allocator = LinearAllocator::new(ITEM_COUNT * (std::mem::size_of::<T>() + 32));
 
     macro_rules! bench {
         ($name:expr, $time:expr, $alloc_fn:expr) => {
@@ -163,7 +163,7 @@ fn bench<T: Copy + BenchNew + BenchData, V: BenchNew + BenchData>() -> String {
             for i in 0..ITERATIONS {
                 println!("{} iter {}", $name, i);
                 let dtor_start = {
-                    let scope = ScopedScratch::new(&allocator);
+                    let scope = ScopedScratch::new(&mut allocator);
                     let (datas, alloc_ns) = bench_alloc(&scope, $alloc_fn);
                     $time.alloc_ns += alloc_ns;
                     let (acc, iter_ns) = bench_iter(&datas);

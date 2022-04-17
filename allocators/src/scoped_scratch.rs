@@ -46,7 +46,7 @@ impl Drop for ScopedScratch<'_, '_> {
 }
 
 impl<'a, 'b> ScopedScratch<'a, 'b> {
-    pub fn new(allocator: &'a LinearAllocator) -> Self {
+    pub fn new(allocator: &'a mut LinearAllocator) -> Self {
         Self {
             allocator,
             alloc_start: allocator.peek(),
@@ -117,8 +117,8 @@ mod tests {
 
     #[test]
     fn alloc_primitive() {
-        let alloc = LinearAllocator::new(1024);
-        let scratch = ScopedScratch::new(&alloc);
+        let mut alloc = LinearAllocator::new(1024);
+        let scratch = ScopedScratch::new(&mut alloc);
 
         let a = scratch.new_pod(0xABu8);
         assert_eq!(*a, 0xABu8);
@@ -126,8 +126,8 @@ mod tests {
 
     #[test]
     fn alloc_pod() {
-        let alloc = LinearAllocator::new(1024);
-        let scratch = ScopedScratch::new(&alloc);
+        let mut alloc = LinearAllocator::new(1024);
+        let scratch = ScopedScratch::new(&mut alloc);
 
         #[derive(Clone, Copy)]
         #[allow(dead_code)]
@@ -143,8 +143,8 @@ mod tests {
 
     #[test]
     fn alloc_obj() {
-        let alloc = LinearAllocator::new(1024);
-        let scratch = ScopedScratch::new(&alloc);
+        let mut alloc = LinearAllocator::new(1024);
+        let scratch = ScopedScratch::new(&mut alloc);
 
         #[allow(dead_code)]
         struct A {
@@ -160,21 +160,20 @@ mod tests {
 
     #[test]
     fn scope_rewind() {
-        let alloc = LinearAllocator::new(1024);
+        let mut alloc = LinearAllocator::new(1024);
         let start_ptr = alloc.peek();
         {
-            let scratch = ScopedScratch::new(&alloc);
+            let scratch = ScopedScratch::new(&mut alloc);
             let _ = scratch.new_pod(0u32);
-            assert_ne!(start_ptr, alloc.peek());
         }
         assert_eq!(start_ptr, alloc.peek());
     }
 
     #[test]
     fn new_scope() {
-        let alloc = LinearAllocator::new(1024);
+        let mut alloc = LinearAllocator::new(1024);
         {
-            let scratch = ScopedScratch::new(&alloc);
+            let scratch = ScopedScratch::new(&mut alloc);
             let a = scratch.new_pod(0xCAFEBABEu32);
             assert_eq!(*a, 0xCAFEBABEu32);
             {
@@ -193,9 +192,9 @@ mod tests {
     )]
     #[test]
     fn active_parent_new_pod() {
-        let alloc = LinearAllocator::new(1024);
+        let mut alloc = LinearAllocator::new(1024);
         {
-            let scratch = ScopedScratch::new(&alloc);
+            let scratch = ScopedScratch::new(&mut alloc);
             let _ = scratch.new_pod(0xCAFEBABEu32);
             {
                 let _scratch2 = scratch.new_scope();
@@ -219,9 +218,9 @@ mod tests {
         let mut dtor_data: Vec<u32> = vec![];
         let mut dtor_push = |v| dtor_data.push(v);
 
-        let alloc = LinearAllocator::new(1024);
+        let mut alloc = LinearAllocator::new(1024);
         {
-            let scratch = ScopedScratch::new(&alloc);
+            let scratch = ScopedScratch::new(&mut alloc);
 
             let _ = scratch.new_obj(A {
                 data: 0xCAFEBABEu32,
