@@ -22,13 +22,11 @@ pub struct ScopedScratch<'a, 'b> {
 
 impl Drop for ScopedScratch<'_, '_> {
     fn drop(&mut self) {
-        let mut data_chain = self.data_chain.get();
-        while let Some(scope) = data_chain {
+        self.iter_chain(&mut |scope| {
             if let Some(dtor) = scope.dtor {
                 dtor(scope.mem)
             }
-            data_chain = scope.previous;
-        }
+        });
 
         // # Safety
         //  - self.alloc_start is from self.allocator.peek() at the start of the scope
@@ -94,6 +92,21 @@ impl<'a, 'b> ScopedScratch<'a, 'b> {
         data.mem = (ret as *mut T) as *mut u8;
         self.data_chain.replace(Some(data));
         ret
+    }
+
+    #[cfg(test)]
+    pub fn data_chain_len(&self) -> usize {
+        let mut len = 0;
+        self.iter_chain(&mut |_| len += 1);
+        len
+    }
+
+    fn iter_chain(&self, f: &mut dyn FnMut(&ScopeData)) {
+        let mut data_chain = self.data_chain.get();
+        while let Some(scope) = data_chain {
+            f(scope);
+            data_chain = scope.previous;
+        }
     }
 }
 
@@ -191,7 +204,29 @@ mod tests {
     }
 
     #[test]
-    fn dtor_order() {
+    fn no_drop() {
+        #[derive(Clone, Copy)]
+        #[allow(dead_code)]
+        struct A {
+            data: u32,
+        }
+
+        let mut alloc = LinearAllocator::new(1024);
+        {
+            let scratch = ScopedScratch::new(&mut alloc);
+
+            let _ = scratch.alloc(A {
+                data: 0xC0FFEEEEu32,
+            });
+            let _ = scratch.alloc(A {
+                data: 0xDEADC0DEu32,
+            });
+            assert_eq!(scratch.data_chain_len(), 0);
+        }
+    }
+
+    #[test]
+    fn drop_order() {
         struct A<'a> {
             data: u32,
             dtor_push: &'a mut dyn FnMut(u32) -> (),
@@ -217,6 +252,53 @@ mod tests {
                 data: 0xDEADCAFEu32,
                 dtor_push: &mut dtor_push,
             });
+            assert_eq!(scratch.data_chain_len(), 2);
+        }
+        assert_eq!(dtor_data.len(), 2);
+        assert_eq!(dtor_data[0], 0xDEADCAFEu32);
+        assert_eq!(dtor_data[1], 0xCAFEBABEu32);
+    }
+
+    #[test]
+    fn drop_some() {
+        struct A<'a> {
+            data: u32,
+            dtor_push: &'a mut dyn FnMut(u32) -> (),
+        }
+        impl<'a> Drop for A<'a> {
+            fn drop(&mut self) {
+                (self.dtor_push)(self.data);
+            }
+        }
+
+        #[derive(Clone, Copy)]
+        #[allow(dead_code)]
+        struct B {
+            data: u32,
+        }
+
+        let mut dtor_data: Vec<u32> = vec![];
+        let mut dtor_push = |v| dtor_data.push(v);
+
+        let mut alloc = LinearAllocator::new(1024);
+        {
+            let scratch = ScopedScratch::new(&mut alloc);
+
+            let _ = scratch.alloc(A {
+                data: 0xCAFEBABEu32,
+                dtor_push: &mut dtor_push,
+            });
+            let _ = scratch.alloc(B {
+                data: 0xC0FFEEEEu32,
+            });
+            let _ = scratch.alloc(A {
+                data: 0xDEADCAFEu32,
+                dtor_push: &mut dtor_push,
+            });
+            let _ = scratch.alloc(B {
+                data: 0xDEADC0DEu32,
+            });
+            assert_eq!(scratch.data_chain_len(), 2);
         }
         assert_eq!(dtor_data.len(), 2);
         assert_eq!(dtor_data[0], 0xDEADCAFEu32);
