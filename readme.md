@@ -24,14 +24,14 @@ fn main() {
     let prim: &mut u32;
     {
         let scratch = ScopedScratch::new(&mut allocator);
-        let obj: &mut Object = scratch.new_obj(Object { data: vec![0; 16] });
-        let pod: &mut Pod = scratch.new_pod(Pod { data: [0; 16] });
-        prim = scratch.new_pod(0u32);
+        let obj: &mut Object = scratch.alloc(Object { data: vec![0; 16] });
+        let pod: &mut Pod = scratch.alloc(Pod { data: [0; 16] });
+        prim = scratch.alloc(0u32);
         {
             let inner_scratch = scratch.new_scope();
-            let inner_pod: &mut Pod = inner_scratch.new_pod(Pod { data: [0; 16] });
+            let inner_pod: &mut Pod = inner_scratch.alloc(Pod { data: [0; 16] });
             // This will panic on assert since `scratch` is the parent of `inner_scratch`
-            // let scratch_pod: &mut Pod = scratch.new_pod(Pod { data: [0; 16] });
+            // let scratch_pod: &mut Pod = scratch.alloc(Pod { data: [0; 16] });
         }
         // The object `obj` points to will be dropped here
     }

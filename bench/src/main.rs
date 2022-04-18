@@ -139,12 +139,8 @@ fn bench_iter<T: BenchData>(datas: &Vec<T>) -> (u32, f32) {
     (acc, spent_ns)
 }
 
-fn new_pod<'a, T: Copy + BenchNew + BenchData>(scratch: &'a ScopedScratch, v: u32) -> &'a mut T {
-    scratch.new_pod(T::new(v))
-}
-
-fn new_obj<'a, T: BenchNew + BenchData>(scratch: &'a ScopedScratch, v: u32) -> &'a mut T {
-    scratch.new_obj(T::new(v))
+fn alloc<'a, T: BenchNew + BenchData>(scratch: &'a ScopedScratch, v: u32) -> &'a mut T {
+    scratch.alloc(T::new(v))
 }
 
 fn bench<T: Copy + BenchNew + BenchData, V: BenchNew + BenchData>() -> String {
@@ -189,9 +185,9 @@ fn bench<T: Copy + BenchNew + BenchData, V: BenchNew + BenchData>() -> String {
 
     bench!("Naive obj", times.naive_obj, &|_, v| Box::new(V::new(v)));
 
-    bench!("Scoped POD", times.scoped_pod, &new_pod::<T>);
+    bench!("Scoped POD", times.scoped_pod, &alloc::<T>);
 
-    bench!("Scoped obj", times.scoped_obj, &new_obj::<V>);
+    bench!("Scoped obj", times.scoped_obj, &alloc::<V>);
 
     macro_rules! alloc_diff {
         ($this:ident, $other:ident) => {

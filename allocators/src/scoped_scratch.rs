@@ -71,14 +71,18 @@ impl<'a, 'b> ScopedScratch<'a, 'b> {
     // The references will be to non-overlapping memory as the allocator is only
     // rewound on drop
     #[allow(clippy::mut_from_ref)]
-    // TODO: Can we get away with no Drop?
-    //       Aggregate can have no Drop of its own but store data that implements it.
-    //       How does drop_in_place behave then?
-    pub fn new_obj<T: Sized>(&self, obj: T) -> &mut T {
+    /// Allocates `obj` with the held allocator. If `obj` needs Drop, its destruction
+    /// is added to internal bookkeeping and is handled when this `ScopeScratch` is dropped.
+    pub fn alloc<T: Sized>(&self, obj: T) -> &mut T {
         assert!(
             !*self.locked.borrow(),
             "Tried to allocate from a ScopedScratch that has an active child scope"
         );
+
+        // The compiler seems smart enough that this check is optimized out
+        if !std::mem::needs_drop::<T>() {
+            return self.allocator.alloc_internal(obj);
+        }
 
         let mut data = self.allocator.alloc_internal(ScopeData {
             mem: std::ptr::null_mut::<u8>(),
@@ -90,23 +94,6 @@ impl<'a, 'b> ScopedScratch<'a, 'b> {
         data.mem = (ret as *mut T) as *mut u8;
         self.data_chain.replace(Some(data));
         ret
-    }
-
-    // Interior mutability required by interface
-    // The references will be to non-overlapping memory as the allocator is only
-    // rewound on drop
-    #[allow(clippy::mut_from_ref)]
-    // Safety bounds on allocation, approximate true PoD
-    //       Copy - won't have Drop
-    // TODO: Could this be abstracted such that we could call one method for both
-    //       and let the compiler do magic to figure out which it is? Sounds like specialization but for param type.
-    pub fn new_pod<T: Copy + Sized>(&self, pod: T) -> &mut T {
-        assert!(
-            !*self.locked.borrow(),
-            "Tried to allocate from a ScopedScratch that has an active child scope"
-        );
-
-        self.allocator.alloc_internal(pod)
     }
 }
 
@@ -120,7 +107,7 @@ mod tests {
         let mut alloc = LinearAllocator::new(1024);
         let scratch = ScopedScratch::new(&mut alloc);
 
-        let a = scratch.new_pod(0xABu8);
+        let a = scratch.alloc(0xABu8);
         assert_eq!(*a, 0xABu8);
     }
 
@@ -135,7 +122,7 @@ mod tests {
             data: u32,
         }
 
-        let a = scratch.new_pod(A {
+        let a = scratch.alloc(A {
             data: 0xDEADC0DEu32,
         });
         assert_eq!(a.data, 0xDEADC0DEu32);
@@ -151,7 +138,7 @@ mod tests {
             data: Vec<u32>,
         }
 
-        let a = scratch.new_obj(A {
+        let a = scratch.alloc(A {
             data: vec![0xC0FFEEEEu32],
         });
         assert_eq!(a.data.len(), 1);
@@ -164,7 +151,7 @@ mod tests {
         let start_ptr = alloc.peek();
         {
             let scratch = ScopedScratch::new(&mut alloc);
-            let _ = scratch.new_pod(0u32);
+            let _ = scratch.alloc(0u32);
         }
         assert_eq!(start_ptr, alloc.peek());
     }
@@ -174,15 +161,15 @@ mod tests {
         let mut alloc = LinearAllocator::new(1024);
         {
             let scratch = ScopedScratch::new(&mut alloc);
-            let a = scratch.new_pod(0xCAFEBABEu32);
+            let a = scratch.alloc(0xCAFEBABEu32);
             assert_eq!(*a, 0xCAFEBABEu32);
             {
                 let scratch2 = scratch.new_scope();
-                let b = scratch2.new_pod(0xDEADCAFEu32);
+                let b = scratch2.alloc(0xDEADCAFEu32);
                 assert_eq!(*b, 0xDEADCAFEu32);
             }
             assert_eq!(*a, 0xCAFEBABEu32);
-            let b = scratch.new_pod(0xC0FFEEEEu32);
+            let b = scratch.alloc(0xC0FFEEEEu32);
             assert_eq!(*b, 0xC0FFEEEEu32);
         }
     }
@@ -191,14 +178,14 @@ mod tests {
         expected = "Tried to allocate from a ScopedScratch that has an active child scope"
     )]
     #[test]
-    fn active_parent_new_pod() {
+    fn active_parent_alloc() {
         let mut alloc = LinearAllocator::new(1024);
         {
             let scratch = ScopedScratch::new(&mut alloc);
-            let _ = scratch.new_pod(0xCAFEBABEu32);
+            let _ = scratch.alloc(0xCAFEBABEu32);
             {
                 let _scratch2 = scratch.new_scope();
-                let _ = scratch.new_pod(0xDEADCAFEu32);
+                let _ = scratch.alloc(0xDEADCAFEu32);
             }
         }
     }
@@ -222,11 +209,11 @@ mod tests {
         {
             let scratch = ScopedScratch::new(&mut alloc);
 
-            let _ = scratch.new_obj(A {
+            let _ = scratch.alloc(A {
                 data: 0xCAFEBABEu32,
                 dtor_push: &mut dtor_push,
             });
-            let _ = scratch.new_obj(A {
+            let _ = scratch.alloc(A {
                 data: 0xDEADCAFEu32,
                 dtor_push: &mut dtor_push,
             });
