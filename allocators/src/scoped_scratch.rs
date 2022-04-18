@@ -15,6 +15,9 @@ struct ScopeData<'a> {
 pub struct ScopedScratch<'a, 'b> {
     allocator: &'a LinearAllocator,
     alloc_start: *mut u8,
+    // Interior mutability because new_scope() and alloc_internal() need to work
+    // on immutable references so that we can create multiple scopes and allocate
+    // multiple objects
     data_chain: Cell<Option<&'a ScopeData<'a>>>,
     parent_locked: Option<&'b RefCell<bool>>,
     locked: RefCell<bool>,
@@ -29,10 +32,10 @@ impl Drop for ScopedScratch<'_, '_> {
         });
 
         // # Safety
-        //  - self.alloc_start is from self.allocator.peek() at the start of the scope
-        //  - dtors for the objects that require it in this scope were just called
-        //    - lock assertions ensure only the innermost scope is ever used
-        //  - Any references to objects in this scope are limited by its lifetime
+        //  - self.alloc_start is from self.allocator.peek() at the start of the scratch
+        //  - dtors for the objects that require it in this scratch were just called
+        //    - lock assertions ensure only the innermost scratch scope is ever used
+        //  - Any references to objects in this scratch are limited by its lifetime
         unsafe {
             self.allocator.rewind(self.alloc_start);
         }
@@ -84,7 +87,19 @@ impl<'a, 'b> ScopedScratch<'a, 'b> {
 
         let mut data = self.allocator.alloc_internal(ScopeData {
             mem: std::ptr::null_mut::<u8>(),
-            dtor: Some(&|ptr: *mut u8| unsafe { (ptr as *mut T).drop_in_place() }),
+            dtor: Some(&|ptr: *mut u8| {
+                assert!(!ptr.is_null());
+                // Safety:
+                // - We asserted that ptr is not null
+                // - Assume ptr has come the internal allocator so also assume it is
+                //   valid and properly aligned
+                // - Assume obj pointed by ptr is valid for dropping
+                //   - it was initialized by value so it should be in a valid state
+                //     for dropping
+                //   - it is effectively owned by us and we will only drop it once
+                //   - lifetimes of any references to it will be tied to our lifetime
+                unsafe { (ptr as *mut T).drop_in_place() }
+            }),
             previous: self.data_chain.get(),
         });
 

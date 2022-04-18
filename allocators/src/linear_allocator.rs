@@ -5,23 +5,31 @@ pub struct LinearAllocator {
     block_start: *mut u8,
     layout: Layout,
     size_bytes: usize,
+    // Interior mutability because alloc_internal() and rewind() need to work on
+    // immutable references so that we can allocate multiple objects
     next_alloc: Cell<*mut u8>,
 }
 
-// TODO: Do we care to expose this?
+// This applies for most ARM, x86 and x64, but notably not for Apple M1 that has 128B lines
 const L1_CACHE_LINE_SIZE: usize = 64;
 
 impl LinearAllocator {
     pub fn new(size_bytes: usize) -> Self {
-        debug_assert_ne!(size_bytes, 0, "Cannot create an allocator with size 0");
+        assert_ne!(size_bytes, 0, "Cannot create an allocator with size 0");
+        // Limit so that we can assume allocation arithmetic can never overflow
+        assert!(size_bytes < isize::MAX as usize);
 
+        const ALIGN: usize = L1_CACHE_LINE_SIZE;
         // align shouldn't be 0
-        const_assert_ne!(L1_CACHE_LINE_SIZE, 0);
+        const_assert_ne!(ALIGN, 0);
         // align should be a power of two
-        const_assert_eq!(L1_CACHE_LINE_SIZE & (L1_CACHE_LINE_SIZE - 1), 0);
+        const_assert_eq!(ALIGN & (ALIGN - 1), 0);
         // Since we check align ourselves, this should only fail on overflow.
-        let layout = Layout::from_size_align(size_bytes, L1_CACHE_LINE_SIZE)
-            .expect("Failed to create memory layout");
+        let layout =
+            Layout::from_size_align(size_bytes, ALIGN).expect("Failed to create memory layout");
+
+        // Safety:
+        // - layout has a non-zero size since size_bytes is not 0 and its construction succeeded
         let block_start = unsafe { std::alloc::alloc(layout) };
 
         if block_start.is_null() {
@@ -39,12 +47,16 @@ impl LinearAllocator {
 
 impl Drop for LinearAllocator {
     fn drop(&mut self) {
+        // Safety:
+        //  - self.block_start was allocated using the same allocator in new()
+        //  - self.layout is the layout it was allocated with
         unsafe {
             std::alloc::dealloc(self.block_start, self.layout);
         }
     }
 }
 
+// This interface is not exposed outside the library with the goal of being safe all around
 pub trait LinearAllocatorInternal {
     // Interior mutability required by interface
     // The references will be to non-overlapping memory as long as [rewind()] is not misused.
@@ -71,11 +83,33 @@ impl LinearAllocatorInternal for LinearAllocator {
     fn alloc_internal<T: Sized>(&self, obj: T) -> &mut T {
         let size_bytes = std::mem::size_of::<T>();
         let alignment = std::mem::align_of::<T>();
+        // Make sure new_size never overflows
+        // size is always a multiple of alignment
+        assert!(size_bytes < (isize::MAX / 2) as usize);
 
         let next_alloc = self.next_alloc.get();
         let align_offset = next_alloc.align_offset(alignment);
+        assert_ne!(align_offset, usize::MAX);
 
+        // Safety:
+        // - self.block_start is at the start of the allocation and next_alloc
+        //   has been verified to be within the allocation (or one byte past it)
+        //   either by alloc_internal() or rewind()
+        // - We assume next_alloc is derived from self.block_start because it's either
+        //   - the same as self.block_start
+        //   - derived from a previous self.next_alloc
+        //   - from rewind() that has safety rules expecting the input to be
+        //     - from peek()
+        //       - some previous self.next_alloc
+        //     - pointer to an object from alloc_internal()
+        //       - derived from some previous self.next_alloc
+        // - Distance between two *mut u8 is always a multiple of u8
+        // - Maximum held block size is under isize::MAX so distances within it can't overflow isize
+        // - Rust allocations never wrap around the address space
         let previous_size = unsafe { next_alloc.offset_from(self.block_start) as usize };
+
+        // The asserts above make sure this can't overflow since
+        // previous_size <= self.size_bytes < isize::MAX
         let new_size = previous_size + align_offset + size_bytes;
         if new_size > self.size_bytes {
             let remaining_bytes = self.size_bytes - previous_size;
@@ -85,11 +119,22 @@ impl LinearAllocatorInternal for LinearAllocator {
             );
         }
 
-        let new_alloc = unsafe { self.next_alloc.get().add(align_offset) };
+        // Safety:
+        // - self.next_alloc has been verified to be within the allocation either
+        //   by alloc_internal() or rewind(), and we just verified that the aligned
+        //   object fits the allocation
+        // - Maximum held block size is under isize::MAX so offsets within it can't overflow isize
+        // - Rust allocations never wrap around the address space
+        let new_alloc = unsafe {
+            let new_alloc = self.next_alloc.get().add(align_offset);
+            self.next_alloc.replace(new_alloc.add(size_bytes));
+            new_alloc
+        };
 
-        self.next_alloc
-            .replace(unsafe { new_alloc.add(size_bytes) });
-
+        // Safety:
+        // - new_alloc is a pointer to at least size_of::<T>() bytes of the block
+        //   from self.block_start and this allocator can't shared between threads
+        // - We aligned new_alloc for T
         unsafe {
             let t_ptr = new_alloc as *mut T;
             t_ptr.write(obj);
@@ -99,7 +144,8 @@ impl LinearAllocatorInternal for LinearAllocator {
 
     unsafe fn rewind(&self, alloc: *mut u8) {
         // Let's be nice and catch the obvious error
-        // For non-PoD struct dtor validation, we are out of luck
+        // Reference lifetimes and allocated structs needing Drop are truly the
+        // responsibility of the caller
         debug_assert!(
             (alloc as usize) >= (self.block_start as usize)
                 && (alloc as usize) < (self.block_start as usize) + self.size_bytes,
