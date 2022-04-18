@@ -1,4 +1,4 @@
-use crate::allocator::{AllocatorInternal, LinearAllocator};
+use crate::linear_allocator::{LinearAllocator, LinearAllocatorInternal};
 
 use std::cell::{Cell, RefCell};
 

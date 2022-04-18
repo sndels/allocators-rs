@@ -45,7 +45,7 @@ impl Drop for LinearAllocator {
     }
 }
 
-pub trait AllocatorInternal {
+pub trait LinearAllocatorInternal {
     // Interior mutability required by interface
     // The references will be to non-overlapping memory as long as [rewind()] is not misused.
     #[allow(clippy::mut_from_ref)]
@@ -66,7 +66,7 @@ pub trait AllocatorInternal {
     fn peek(&self) -> *mut u8;
 }
 
-impl AllocatorInternal for LinearAllocator {
+impl LinearAllocatorInternal for LinearAllocator {
     #[allow(clippy::mut_from_ref)]
     fn alloc_internal<T: Sized>(&self, obj: T) -> &mut T {
         let size_bytes = std::mem::size_of::<T>();
